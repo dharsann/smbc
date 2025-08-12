@@ -1,16 +1,9 @@
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
+import 'pages/login_page.dart';
+import 'pages/home_page.dart';
 
-import 'services/api_client.dart';
-import 'services/wallet_service.dart';
-import 'pages/login_page.dart' show LoginPage;
-import 'pages/home_page.dart' show HomePage;
-
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env', isOptional: true);
+void main() {
   runApp(const MyApp());
 }
 
@@ -19,35 +12,21 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => Session()),
-        Provider<WalletService>(create: (_) => WalletService()),
-        ProxyProvider<Session, ApiClient>(
-          update: (_, session, __) => ApiClient(http.Client(), session),
-        ),
-      ],
-      child: MaterialApp(
-        title: 'Blockchain Chat',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-          useMaterial3: true,
-        ),
-        home: const AuthGate(),
-      ),
-    );
-  }
-}
+    final uri = Uri.parse(html.window.location.href);
+    final token = uri.queryParameters['token'];
 
-class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
+    Widget homePage;
+    if (token != null && token.isNotEmpty) {
+      final wallet = uri.queryParameters['wallet'] ?? 'Unknown';
+      homePage = ChatPage(walletAddress: wallet, token: token);
+    } else {
+      homePage = const WalletLoginPage();
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<Session>(
-      builder: (_, session, __) => session.isAuthenticated
-          ? const HomePage()
-          : const LoginPage(),
+    return MaterialApp(
+      title: 'Blockchain Chat Login',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: homePage,
     );
   }
 }
