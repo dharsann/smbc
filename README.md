@@ -1,73 +1,214 @@
-# Blockchain P2P Chat Backend
+# Simple Blockchain Chat (SMBC v2)
 
-Simple FastAPI backend for blockchain-based peer-to-peer chat using MetaMask authentication.
+A decentralized chat application built with Next.js, FastAPI, and XMTP protocol for secure blockchain-based messaging.
 
-## Features
+## 🚀 Features
 
-- MetaMask wallet authentication
-- User registration and profiles
-- Direct messaging
-- Real-time chat via WebSocket
-- MongoDB Atlas database
-- Simple and clean codebase
+### Core Functionality
+- **Wallet Authentication**: Connect using MetaMask or other Web3 wallets
+- **Decentralized Messaging**: XMTP protocol for secure peer-to-peer communication
+- **User Management**: Add/remove contacts by wallet address
+- **Real-time Chat**: WebSocket support for instant messaging
+- **File Sharing**: IPFS integration for decentralized file storage
+- **Profile Management**: Customizable user profiles with avatars
 
-## Setup
+### Recent Updates
+- ✅ Fixed XMTP client initialization issues
+- ✅ Enhanced user management with database persistence
+- ✅ Full wallet address display in sidebar
+- ✅ Improved UI with profile modal and user creation
+- ✅ Dark text in message input area
+- ✅ Persistent user deletion in MongoDB
 
-1. Install dependencies:
+## 🏗️ Architecture
+
+### Frontend (Next.js 15)
+- **Framework**: Next.js with TypeScript
+- **Styling**: Tailwind CSS
+- **Web3**: ethers.js for blockchain interactions
+- **Messaging**: XMTP SDK for decentralized messaging
+- **Storage**: IPFS for file storage
+
+### Backend (FastAPI)
+- **Framework**: FastAPI with Python
+- **Database**: MongoDB for user and message storage
+- **Authentication**: JWT with Web3 signature verification
+- **Real-time**: WebSocket connections
+- **File Storage**: IPFS integration
+
+## 📦 Installation
+
+### Prerequisites
+- Node.js 18+ and npm
+- Python 3.8+
+- MongoDB instance
+- IPFS node (optional, uses public gateways by default)
+
+### Backend Setup
+
+1. Navigate to backend directory:
+```bash
+cd backend
+```
+
+2. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Set up environment variables in `.env`:
-```
-MONGODB_URL=mongodb+srv://username:password@cluster.mongodb.net/blockchain_chat
-SECRET_KEY=your-super-secret-key
-```
-
-3. Run the server:
+3. Create environment file:
 ```bash
-uvicorn app.main:app --reload
+cp .env.example .env
 ```
 
-## API Endpoints
+4. Configure environment variables in `.env`:
+```env
+SECRET_KEY=your_secret_key_here
+MONGODB_URL=mongodb://localhost:27017/blockchain_chat
+```
+
+5. Start the backend server:
+```bash
+python main.py
+```
+
+The API will be available at `http://localhost:8001`
+
+### Frontend Setup
+
+1. Navigate to frontend directory:
+```bash
+cd frontend
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Create environment file:
+```bash
+cp .env.local.example .env.local
+```
+
+4. Configure environment variables in `.env.local`:
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8001
+```
+
+5. Start the development server:
+```bash
+npm run dev
+```
+
+The application will be available at `http://localhost:3000`
+
+## 🔧 Configuration
+
+### Environment Variables
+
+#### Backend (.env)
+- `SECRET_KEY`: JWT signing secret
+- `MONGODB_URL`: MongoDB connection string
+
+#### Frontend (.env.local)
+- `NEXT_PUBLIC_API_BASE_URL`: Backend API URL
+
+## 🚀 Usage
+
+1. **Connect Wallet**: Click "Connect Wallet" and approve the connection
+2. **Sign Authentication**: Sign the message to authenticate your wallet
+3. **Add Contacts**: Use the "➕ Add" button in the sidebar to add users by wallet address
+4. **Start Chatting**: Select a user from the sidebar to begin messaging
+5. **Send Files**: Use the attachment button to share files via IPFS
+6. **Manage Profile**: Click the profile icon to update your information
+
+## 🛠️ API Endpoints
 
 ### Authentication
 - `POST /auth/request` - Request authentication message
 - `POST /auth/verify` - Verify signature and get JWT token
 
-### Users
+### User Management
 - `GET /users/me` - Get current user profile
-- `PUT /users/me` - Update current user profile
-- `GET /users/search?q=query` - Search users
+- `PUT /users/me` - Update user profile
+- `GET /chat/users` - Get all users
+- `POST /chat/users/add` - Add user by wallet address
+- `DELETE /chat/users/{user_id}` - Delete user from contacts
 
-### Messages
-- `POST /messages` - Send a message
-- `GET /messages/{user_id}` - Get messages with a user
+### Messaging
+- `POST /chat/send` - Send message
+- `GET /chat/messages/{peer_wallet}` - Get chat history
+- `WS /ws/{user_id}` - WebSocket connection for real-time messaging
 
-### WebSocket
-- `WS /ws/{user_id}` - Real-time connection
+### File Storage
+- `POST /ipfs/upload` - Upload file to IPFS
 
-## Usage
+## 🔐 Security Features
 
-1. Frontend calls `/auth/request` with wallet address
-2. User signs the returned message with MetaMask
-3. Frontend sends signature to `/auth/verify`
-4. Use returned JWT token for authenticated requests
-5. Connect to WebSocket for real-time features
+- **Web3 Authentication**: Signature-based authentication without passwords
+- **JWT Tokens**: Secure session management
+- **XMTP Encryption**: End-to-end encrypted messaging
+- **Input Validation**: Comprehensive input sanitization
+- **CORS Protection**: Configured for secure cross-origin requests
 
-## Database Schema
+## 🧪 Testing
 
-### Users Collection
-- `_id`: ObjectId
-- `wallet_address`: string (unique)
-- `username`: string (optional, unique)
-- `display_name`: string (optional)
-- `avatar_url`: string (optional)
-- `created_at`: datetime
+### Backend Tests
+```bash
+cd backend
+python -m pytest
+```
 
-### Messages Collection
-- `_id`: ObjectId
-- `sender_id`: ObjectId (ref: users)
-- `recipient_id`: ObjectId (ref: users)
-- `content`: string
-- `created_at`: datetime
+### Frontend Tests
+```bash
+cd frontend
+npm test
+```
+
+## 📱 Mobile Support
+
+The application is responsive and works on mobile devices through web browsers with Web3 wallet support.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🔗 Links
+
+- [XMTP Protocol](https://xmtp.org/)
+- [Next.js Documentation](https://nextjs.org/docs)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [MongoDB Documentation](https://docs.mongodb.com/)
+
+## 🐛 Known Issues
+
+- XMTP client initialization may take a few seconds on first load
+- File uploads are limited by IPFS gateway constraints
+- WebSocket connections may need reconnection on network changes
+
+## 🚧 Roadmap
+
+- [ ] Group chat functionality
+- [ ] Message encryption indicators
+- [ ] Offline message queuing
+- [ ] Push notifications
+- [ ] Mobile app development
+- [ ] ENS name resolution
+- [ ] Message reactions and replies
+
+## 📞 Support
+
+For support, please open an issue on GitHub or contact the development team.
+
+---
+
+Built with ❤️ using Web3 technologies
