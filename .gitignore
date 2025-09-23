@@ -1,0 +1,30 @@
+# Node / Next.js
+node_modules
+.next
+out
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+.env
+.venv
+venv/
+env/
+instance/
+.pytest_cache/
+.idea/
+.next/
+.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+secret.txt
