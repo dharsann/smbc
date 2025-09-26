@@ -20,11 +20,13 @@ const ChatPage: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [profilePicture, setProfilePicture] = useState<string>('');
   const [isMessagingReady, setIsMessagingReady] = useState<boolean>(true); // Always ready since using backend
+  const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const wsInitialized = useRef<boolean>(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -33,11 +35,8 @@ const ChatPage: React.FC = () => {
     
     // Initialize WebSocket connection for real-time messages
     const initWebSocket = async () => {
-      if (wsInitialized.current) return;
-      
       const user = await ApiService.fetchUserProfile();
       if (user && user.id) {
-        wsInitialized.current = true;
         const { WebSocketService } = await import('@/services');
         WebSocketService.connect(
           user.id,
@@ -50,11 +49,9 @@ const ChatPage: React.FC = () => {
             )) {
               setMessages(prev => [...prev, message]);
             }
-            setWsConnected(true);
           },
           (error: string) => {
             console.error('WebSocket error:', error);
-            setWsConnected(false);
           }
         );
       }
@@ -64,11 +61,8 @@ const ChatPage: React.FC = () => {
     
     // Cleanup WebSocket on unmount
     return () => {
-      if (wsInitialized.current) {
-        const { WebSocketService } = require('@/services');
-        WebSocketService.disconnect();
-        wsInitialized.current = false;
-      }
+      const { WebSocketService } = require('@/services');
+      WebSocketService.disconnect();
     };
   }, []);
 
@@ -282,9 +276,9 @@ const ChatPage: React.FC = () => {
         <div className="flex items-center space-x-2">
           {/* Messaging Status Indicator */}
           <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+            <div className={`w-3 h-3 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
             <span className="text-xs text-gray-600">
-              Messaging Ready
+              {wsConnected ? 'Connected' : 'Connecting...'}
             </span>
           </div>
 
