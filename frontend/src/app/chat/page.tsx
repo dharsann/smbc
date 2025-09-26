@@ -32,45 +32,73 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     loadUserProfile();
     loadUsers();
-    
-    // Initialize WebSocket connection for real-time messages
-    const initWebSocket = async () => {
-      const user = await ApiService.fetchUserProfile();
-      if (user && user.id) {
+  }, []);
+
+  // Initialize WebSocket when currentUser is loaded
+  useEffect(() => {
+    if (currentUser && currentUser.id && !wsInitialized.current) {
+      wsInitialized.current = true;
+      const initWebSocket = async () => {
         const { WebSocketService } = await import('@/services');
         WebSocketService.connect(
-          user.id,
+          currentUser.id,
           (message: any) => {
             console.log('Received real-time message:', message);
             // Add message to current chat if it's from the selected user
-            if (selectedUser && (
-              message.sender.toLowerCase() === selectedUser.wallet_address.toLowerCase() ||
-              message.receiver.toLowerCase() === selectedUser.wallet_address.toLowerCase()
-            )) {
-              setMessages(prev => [...prev, message]);
-            }
+            setMessages(prev => {
+              // Check if message already exists to prevent duplicates
+              const exists = prev.some(m => m.id === message.id);
+              if (!exists) {
+                return [...prev, message];
+              }
+              return prev;
+            });
           },
           (error: string) => {
             console.error('WebSocket error:', error);
+            setWsConnected(false);
           }
         );
-      }
-    };
-    
-    initWebSocket();
+        setWsConnected(true);
+      };
+      
+      initWebSocket();
+    }
     
     // Cleanup WebSocket on unmount
     return () => {
-      const { WebSocketService } = require('@/services');
-      WebSocketService.disconnect();
+      if (wsInitialized.current) {
+        const { WebSocketService } = require('@/services');
+        WebSocketService.disconnect();
+      }
     };
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // Messaging is ready since using backend
+  // Initialize XMTP when user is loaded
+  useEffect(() => {
+    const initXMTP = async () => {
+      if (currentUser && currentUser.walletAddress) {
+        try {
+          const signer = EthereumService.getSigner();
+          if (signer) {
+            const xmtpService = XMTPService.getInstance();
+            await xmtpService.initialize(signer);
+            setIsMessagingReady(true);
+            console.log('XMTP initialized successfully');
+          }
+        } catch (error) {
+          console.error('XMTP initialization failed:', error);
+          setIsMessagingReady(false);
+        }
+      }
+    };
+    
+    initXMTP();
+  }, [currentUser]);
 
   const loadUserProfile = async () => {
     try {
@@ -101,7 +129,7 @@ const ChatPage: React.FC = () => {
   };
 
   const selectUser = async (user: any) => {
-    if (!currentUser || !currentUser.wallet_address || !user.wallet_address) {
+    if (!currentUser || !currentUser.walletAddress || !user.wallet_address) {
       console.error('Invalid user data for fetching messages');
       setToastMessage('Invalid user data');
       return;
@@ -112,8 +140,37 @@ const ChatPage: React.FC = () => {
     setMessages([]);
 
     try {
-      const fetchedMessages = await ApiService.fetchMessages(user.wallet_address, user.wallet_address);
-      setMessages(fetchedMessages);
+      // Fetch messages from backend
+      const backendMessages = await ApiService.fetchMessages(currentUser.walletAddress, user.wallet_address);
+      
+      // Also fetch XMTP messages if available
+      let xmtpMessages = [];
+      if (isMessagingReady) {
+        try {
+          const xmtpService = XMTPService.getInstance();
+          xmtpMessages = await xmtpService.getMessages(user.wallet_address);
+        } catch (error) {
+          console.error('Error fetching XMTP messages:', error);
+        }
+      }
+      
+      // Combine and sort messages by timestamp
+      const allMessages = [...backendMessages, ...xmtpMessages.map(msg => ({
+        id: msg.id,
+        sender: msg.sender,
+        receiver: user.wallet_address,
+        content: msg.content,
+        timestamp: msg.timestamp.toISOString(),
+        isFile: msg.isFile,
+        fileData: msg.fileData
+      }))];
+      
+      // Sort by timestamp and remove duplicates
+      const uniqueMessages = allMessages.filter((msg, index, self) => 
+        index === self.findIndex(m => m.id === msg.id)
+      ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      
+      setMessages(uniqueMessages);
     } catch (error) {
       console.error('Error fetching messages:', error);
       setToastMessage('Error loading messages');
@@ -158,16 +215,42 @@ const ChatPage: React.FC = () => {
         content = hasText ? `${text} [File: ${selectedFile.name}] - IPFS: ${cid}` : `[File: ${selectedFile.name}] - IPFS: ${cid}`;
       }
 
-      // Send message via backend
-      await ApiService.sendMessage(selectedUser.wallet_address, content);
+      // Send message via both backend and XMTP for redundancy
+      const messagePromises = [];
+      
+      // Send via backend
+      messagePromises.push(ApiService.sendMessage(selectedUser.wallet_address, content));
+      
+      // Send via XMTP if available
+      if (isMessagingReady) {
+        try {
+          const xmtpService = XMTPService.getInstance();
+          if (hasFile) {
+            messagePromises.push(xmtpService.sendFileMessage(selectedUser.wallet_address, selectedFile));
+          } else {
+            messagePromises.push(xmtpService.sendMessage(selectedUser.wallet_address, content));
+          }
+        } catch (error) {
+          console.error('XMTP send failed:', error);
+        }
+      }
+      
+      // Wait for at least one to succeed
+      await Promise.allSettled(messagePromises);
 
       // Add to local messages immediately
       const newMessage = {
         id: Date.now().toString(),
-        sender: currentUser.wallet_address,
+        sender: currentUser.walletAddress,
         receiver: selectedUser.wallet_address,
         content: content,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        isFile: hasFile,
+        fileData: hasFile ? {
+          fileName: selectedFile.name,
+          fileSize: selectedFile.size,
+          fileType: selectedFile.type
+        } : null
       };
       setMessages(prev => [...prev, newMessage]);
 
@@ -269,16 +352,16 @@ const ChatPage: React.FC = () => {
           </div>
           <div>
             <h1 className="font-bold text-gray-900">De Chat</h1>
-            <p className="text-sm text-gray-600 font-mono">{shortenAddress(currentUser.wallet_address)}</p>
+            <p className="text-sm text-gray-600 font-mono">{shortenAddress(currentUser.walletAddress)}</p>
           </div>
         </div>
 
         <div className="flex items-center space-x-2">
           {/* Messaging Status Indicator */}
           <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+            <div className={`w-3 h-3 rounded-full ${wsConnected && isMessagingReady ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
             <span className="text-xs text-gray-600">
-              {wsConnected ? 'Connected' : 'Connecting...'}
+              {wsConnected && isMessagingReady ? 'Ready' : 'Connecting...'}
             </span>
           </div>
 
@@ -401,18 +484,40 @@ const ChatPage: React.FC = () => {
                 {messages.map((message, index) => (
                   <div
                     key={index}
-                    className={`flex ${message.sender.toLowerCase() === currentUser.wallet_address.toLowerCase() ? 'justify-end' : 'justify-start'}`}
+                    className={`flex ${message.sender.toLowerCase() === currentUser.walletAddress.toLowerCase() ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
                       className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
-                        message.sender.toLowerCase() === currentUser.wallet_address.toLowerCase()
+                        message.sender.toLowerCase() === currentUser.walletAddress.toLowerCase()
                           ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
                           : 'bg-white border border-gray-200 text-gray-900'
                       }`}
                     >
-                      <p className="text-sm">{message.content}</p>
+                      {message.isFile && message.fileData ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-lg">📎</span>
+                            <div className="flex-1">
+                              <p className={`text-sm font-medium ${
+                                message.sender.toLowerCase() === currentUser.walletAddress.toLowerCase() 
+                                  ? 'text-white' : 'text-gray-900'
+                              }`}>
+                                {message.fileData.fileName}
+                              </p>
+                              <p className={`text-xs ${
+                                message.sender.toLowerCase() === currentUser.walletAddress.toLowerCase()
+                                  ? 'text-blue-100' : 'text-gray-500'
+                              }`}>
+                                {(message.fileData.fileSize / 1024).toFixed(1)} KB
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm">{message.content}</p>
+                      )}
                       <p className={`text-xs mt-1 ${
-                        message.sender.toLowerCase() === currentUser.wallet_address.toLowerCase()
+                        message.sender.toLowerCase() === currentUser.walletAddress.toLowerCase()
                           ? 'text-blue-100'
                           : 'text-gray-500'
                       }`}>

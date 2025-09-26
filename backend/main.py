@@ -279,7 +279,9 @@ async def send_message(message_data: MessageCreate, current_user: User = Depends
         "content": message_data.content,
         "sender": current_user.wallet_address,
         "receiver": recipient_wallet,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "isFile": False,
+        "fileData": None
     }
 
     await manager.send_personal_message({"type": "new_message", "message": msg}, str(recipient_doc["_id"]))
@@ -320,7 +322,7 @@ async def get_messages(peer_wallet: str, current_user: User = Depends(get_curren
             "sender": sender_doc["wallet_address"] if sender_doc else "unknown",
             "receiver": recipient_doc["wallet_address"] if recipient_doc else peer_wallet,
             "content": msg["content"],
-            "timestamp": msg["created_at"]
+            "timestamp": msg["created_at"].isoformat() if isinstance(msg["created_at"], datetime) else msg["created_at"]
         })
 
     return {"messages": messages}

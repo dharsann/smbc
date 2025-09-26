@@ -27,7 +27,11 @@ export class XMTPService {
     this.signer = signer;
     try {
       const { Client } = await import('@xmtp/xmtp-js');
-      this.client = await Client.create(signer, { env: 'production' });
+      this.client = await Client.create(signer, { 
+        env: 'production',
+        skipContactPublishing: false,
+        persistConversations: true
+      });
       console.log('XMTP: Client created successfully');
     } catch (error) {
       console.error('XMTP: Failed to create client', error);
@@ -43,7 +47,17 @@ export class XMTPService {
     }
 
     try {
-      const conversation = await this.client.conversations.newConversation(peerAddress);
+      // Check if conversation exists first
+      const conversations = await this.client.conversations.list();
+      let conversation = conversations.find(conv => 
+        conv.peerAddress.toLowerCase() === peerAddress.toLowerCase()
+      );
+      
+      // If no existing conversation, create new one
+      if (!conversation) {
+        conversation = await this.client.conversations.newConversation(peerAddress);
+      }
+      
       console.log('XMTP: Conversation created');
       await conversation.send(message);
       console.log('XMTP: Message sent successfully');
@@ -61,7 +75,17 @@ export class XMTPService {
     }
 
     try {
-      const conversation = await this.client.conversations.newConversation(peerAddress);
+      // First check if conversation exists
+      const conversations = await this.client.conversations.list();
+      let conversation = conversations.find(conv => 
+        conv.peerAddress.toLowerCase() === peerAddress.toLowerCase()
+      );
+      
+      // If no existing conversation, create new one
+      if (!conversation) {
+        conversation = await this.client.conversations.newConversation(peerAddress);
+      }
+      
       console.log('XMTP: Conversation created for getMessages');
       const messages: DecodedMessage[] = await conversation.messages();
       console.log('XMTP: Retrieved', messages.length, 'messages');

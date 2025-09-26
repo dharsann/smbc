@@ -33,7 +33,8 @@ const ConnectPage: React.FC = () => {
       // Initialize XMTP
       const xmtpService = new XMTPService();
       try {
-        await xmtpService.initialize(signer);
+        const xmtpInstance = XMTPService.getInstance();
+        await xmtpInstance.initialize(signer);
       } catch (xmtpError: any) {
         console.error('XMTP initialization failed:', xmtpError);
         throw new Error(`XMTP initialization failed: ${xmtpError.message}`);
