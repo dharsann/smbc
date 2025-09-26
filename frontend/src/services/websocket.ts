@@ -14,7 +14,7 @@ export class WebSocketService {
     WebSocketService.onErrorCallback = onError;
     WebSocketService.connectionError = false;
 
-    const wsUrl = `${process.env.NEXT_PUBLIC_WS_BASE_URL || 'ws://localhost:8000'}/ws/${userId}`;
+    const wsUrl = `${process.env.NEXT_PUBLIC_WS_BASE_URL || 'ws://localhost:8001'}/ws/${userId}`;
     console.log('Connecting to WebSocket:', wsUrl);
 
     try {

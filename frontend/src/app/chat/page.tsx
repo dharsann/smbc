@@ -30,6 +30,46 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     loadUserProfile();
     loadUsers();
+    
+    // Initialize WebSocket connection for real-time messages
+    const initWebSocket = async () => {
+      if (wsInitialized.current) return;
+      
+      const user = await ApiService.fetchUserProfile();
+      if (user && user.id) {
+        wsInitialized.current = true;
+        const { WebSocketService } = await import('@/services');
+        WebSocketService.connect(
+          user.id,
+          (message: any) => {
+            console.log('Received real-time message:', message);
+            // Add message to current chat if it's from the selected user
+            if (selectedUser && (
+              message.sender.toLowerCase() === selectedUser.wallet_address.toLowerCase() ||
+              message.receiver.toLowerCase() === selectedUser.wallet_address.toLowerCase()
+            )) {
+              setMessages(prev => [...prev, message]);
+            }
+            setWsConnected(true);
+          },
+          (error: string) => {
+            console.error('WebSocket error:', error);
+            setWsConnected(false);
+          }
+        );
+      }
+    };
+    
+    initWebSocket();
+    
+    // Cleanup WebSocket on unmount
+    return () => {
+      if (wsInitialized.current) {
+        const { WebSocketService } = require('@/services');
+        WebSocketService.disconnect();
+        wsInitialized.current = false;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -78,7 +118,7 @@ const ChatPage: React.FC = () => {
     setMessages([]);
 
     try {
-      const fetchedMessages = await ApiService.fetchMessages(currentUser.wallet_address, user.wallet_address);
+      const fetchedMessages = await ApiService.fetchMessages(user.wallet_address, user.wallet_address);
       setMessages(fetchedMessages);
     } catch (error) {
       console.error('Error fetching messages:', error);

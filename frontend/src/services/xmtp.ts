@@ -13,13 +13,21 @@ interface ParsedMessage {
 export class XMTPService {
   private client: any = null;
   private signer: ethers.Signer | null = null;
+  private static instance: XMTPService | null = null;
+
+  static getInstance(): XMTPService {
+    if (!XMTPService.instance) {
+      XMTPService.instance = new XMTPService();
+    }
+    return XMTPService.instance;
+  }
 
   async initialize(signer: ethers.Signer): Promise<void> {
     console.log('XMTP: Initializing with signer', signer);
     this.signer = signer;
     try {
       const { Client } = await import('@xmtp/xmtp-js');
-      this.client = await Client.create(signer);
+      this.client = await Client.create(signer, { env: 'production' });
       console.log('XMTP: Client created successfully');
     } catch (error) {
       console.error('XMTP: Failed to create client', error);

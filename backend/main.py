@@ -250,7 +250,7 @@ async def get_user_by_wallet(wallet_address: str, current_user: User = Depends(g
 @app.post("/chat/send")
 async def send_message(message_data: MessageCreate, current_user: User = Depends(get_current_user)):
     """Send a message to another user"""
-    recipient_wallet = message_data.recipient_id.lower()
+    recipient_wallet = message_data.recipient.lower()
 
     # Find recipient (create if doesn't exist)
     recipient_doc = await db.users.find_one({"wallet_address": recipient_wallet})
@@ -294,7 +294,14 @@ async def get_messages(peer_wallet: str, current_user: User = Depends(get_curren
     # Find peer user
     peer_doc = await db.users.find_one({"wallet_address": peer_wallet})
     if not peer_doc:
-        return {"messages": []}
+        # Create user if doesn't exist
+        peer_data = {
+            "wallet_address": peer_wallet,
+            "is_active": False,
+            "created_at": datetime.utcnow()
+        }
+        result = await db.users.insert_one(peer_data)
+        peer_doc = await db.users.find_one({"_id": result.inserted_id})
 
     # Get messages between users
     messages = []
@@ -307,10 +314,11 @@ async def get_messages(peer_wallet: str, current_user: User = Depends(get_curren
 
     async for msg in cursor:
         sender_doc = await db.users.find_one({"_id": msg["sender_id"]})
+        recipient_doc = await db.users.find_one({"_id": msg["recipient_id"]})
         messages.append({
             "id": str(msg["_id"]),
             "sender": sender_doc["wallet_address"] if sender_doc else "unknown",
-            "receiver": peer_wallet,
+            "receiver": recipient_doc["wallet_address"] if recipient_doc else peer_wallet,
             "content": msg["content"],
             "timestamp": msg["created_at"]
         })

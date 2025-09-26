@@ -1,7 +1,7 @@
 import { UserModel, MessageModel } from '@/types';
 import { IPFSService } from './ipfs';
 
-const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001';
 
 export class ApiService {
   private static getToken(): string | null {
@@ -202,7 +202,7 @@ export class ApiService {
     try {
       console.log('Fetching messages between:', userWallet, 'and', peerWallet);
       const response = await fetch(
-        `${API_BASE_URL}/chat/messages/${userWallet}/${peerWallet}`,
+        `${API_BASE_URL}/chat/messages/${peerWallet}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -230,14 +230,14 @@ export class ApiService {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/chat/send_message`, {
+      const response = await fetch(`${API_BASE_URL}/chat/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          recipient_id: recipientId,
+          recipient: recipientId,
           content,
         }),
       });

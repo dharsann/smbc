@@ -88,7 +88,7 @@ class Message(BaseModel):
 
 
 class MessageCreate(BaseModel):
-    recipient_id: str = Field(alias="recipient")
+    recipient: str
     content: str
 
     model_config = ConfigDict(populate_by_name=True)
