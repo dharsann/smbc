@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ApiService, IPFSService, EthereumService } from '@/services';
+import { ApiService, IPFSService, EthereumService, XMTPService } from '@/services';
 import Toast from '@/components/ToastProps';
 import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 import ProfileModal from '@/components/ProfileModal';
+import Sidebar from '@/components/Sidebar';
+import { UserModel } from '@/types';
 
 const ChatPage: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
@@ -17,14 +19,10 @@ const ChatPage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [profilePicture, setProfilePicture] = useState<string>('');
-  const [xmtpService, setXmtpService] = useState<any>(null);
-  const [isXmtpInitialized, setIsXmtpInitialized] = useState<boolean>(false);
+  const [isMessagingReady, setIsMessagingReady] = useState<boolean>(true); // Always ready since using backend
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
-  const [showAddUserModal, setShowAddUserModal] = useState<boolean>(false);
-  const [newUserWallet, setNewUserWallet] = useState<string>('');
-  const [isAddingUser, setIsAddingUser] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -38,33 +36,7 @@ const ChatPage: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  useEffect(() => {
-    const loadXMTP = async () => {
-      try {
-        const { XMTPService } = await import('@/services/xmtp');
-        const service = new XMTPService();
-        setXmtpService(service);
-        
-        // Initialize XMTP if we have a signer
-        const signer = EthereumService.getSigner();
-        if (signer && !service.isInitialized()) {
-          try {
-            await service.initialize(signer);
-            setIsXmtpInitialized(true);
-            console.log('XMTP initialized successfully');
-          } catch (error) {
-            console.error('XMTP initialization error:', error);
-            setToastMessage('Failed to initialize XMTP');
-          }
-        } else if (service.isInitialized()) {
-          setIsXmtpInitialized(true);
-        }
-      } catch (error) {
-        console.error('Failed to load XMTP service:', error);
-      }
-    };
-    loadXMTP();
-  }, []);
+  // Messaging is ready since using backend
 
   const loadUserProfile = async () => {
     try {
@@ -75,21 +47,6 @@ const ChatPage: React.FC = () => {
         const savedProfile = localStorage.getItem('profile_picture');
         if (savedProfile) {
           setProfilePicture(savedProfile);
-        }
-
-        // Initialize XMTP if not already done
-        const signer = EthereumService.getSigner();
-        if (signer && xmtpService && !xmtpService.isInitialized()) {
-          try {
-            await xmtpService.initialize(signer);
-            setIsXmtpInitialized(true);
-            console.log('XMTP initialized in loadUserProfile');
-          } catch (error) {
-            console.error('XMTP initialization error:', error);
-            setToastMessage('Failed to initialize XMTP');
-          }
-        } else if (xmtpService && xmtpService.isInitialized()) {
-          setIsXmtpInitialized(true);
         }
       } else {
         router.push('/login');
@@ -110,34 +67,19 @@ const ChatPage: React.FC = () => {
   };
 
   const selectUser = async (user: any) => {
+    if (!currentUser || !currentUser.wallet_address || !user.wallet_address) {
+      console.error('Invalid user data for fetching messages');
+      setToastMessage('Invalid user data');
+      return;
+    }
+
     setSelectedUser(user);
     setIsLoadingMessages(true);
     setMessages([]);
 
-    // Check if XMTP is properly initialized
-    if (!xmtpService) {
-      setToastMessage('XMTP service not loaded yet');
-      setIsLoadingMessages(false);
-      return;
-    }
-
-    if (!xmtpService.isInitialized()) {
-      setToastMessage('XMTP not initialized. Please try again.');
-      setIsLoadingMessages(false);
-      return;
-    }
-
     try {
-      const fetchedMessages = await xmtpService.getMessages(user.wallet_address);
+      const fetchedMessages = await ApiService.fetchMessages(currentUser.wallet_address, user.wallet_address);
       setMessages(fetchedMessages);
-
-      // Listen for new messages
-      if (xmtpService.isInitialized()) {
-        xmtpService.listenForMessages(user.wallet_address, (message: any) => {
-          setMessages(prev => [...prev, message]);
-        });
-      }
-
     } catch (error) {
       console.error('Error fetching messages:', error);
       setToastMessage('Error loading messages');
@@ -157,16 +99,6 @@ const ChatPage: React.FC = () => {
   const sendMessage = async () => {
     if (!selectedUser || !currentUser) {
       setToastMessage('Please select a user first');
-      return;
-    }
-
-    if (!xmtpService) {
-      setToastMessage('XMTP service not loaded yet');
-      return;
-    }
-
-    if (!xmtpService.isInitialized()) {
-      setToastMessage('XMTP not initialized. Please try again.');
       return;
     }
 
@@ -192,8 +124,8 @@ const ChatPage: React.FC = () => {
         content = hasText ? `${text} [File: ${selectedFile.name}] - IPFS: ${cid}` : `[File: ${selectedFile.name}] - IPFS: ${cid}`;
       }
 
-      // Send message via XMTP
-      await xmtpService.sendMessage(selectedUser.wallet_address, content);
+      // Send message via backend
+      await ApiService.sendMessage(selectedUser.wallet_address, content);
 
       // Add to local messages immediately
       const newMessage = {
@@ -222,60 +154,35 @@ const ChatPage: React.FC = () => {
     try {
       // Delete user from database
       const result = await ApiService.deleteUser(userToDelete.id);
-      
+
       if (result) {
         // Remove user from local state
         setUsers(users.filter(u => u.id !== userToDelete.id));
-        
+
         // If the deleted user was selected, clear selection
         if (selectedUser?.id === userToDelete.id) {
           setSelectedUser(null);
           setMessages([]);
         }
-        
+
         setToastMessage(`Removed ${userToDelete.username || userToDelete.wallet_address} from contacts`);
       } else {
         setToastMessage('Failed to remove user from database');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error removing user:', error);
-      setToastMessage('Failed to remove user');
+      if (error.message && error.message.includes('Session expired')) {
+        setToastMessage(error.message);
+        router.push('/login');
+      } else {
+        setToastMessage('Failed to remove user');
+      }
     } finally {
       setShowDeleteModal(false);
       setUserToDelete(null);
     }
   };
 
-  const handleAddUser = async () => {
-    if (!newUserWallet.trim()) {
-      setToastMessage('Please enter a wallet address');
-      return;
-    }
-
-    setIsAddingUser(true);
-    try {
-      const result = await ApiService.addUserByWallet(newUserWallet.trim());
-      
-      if (result) {
-        // Add user to local state if not already present
-        const existingUser = users.find(u => u.id === result.id);
-        if (!existingUser) {
-          setUsers(prev => [...prev, result]);
-        }
-        
-        setToastMessage(result.message || 'User added successfully');
-        setNewUserWallet('');
-        setShowAddUserModal(false);
-      } else {
-        setToastMessage('Failed to add user');
-      }
-    } catch (error) {
-      console.error('Error adding user:', error);
-      setToastMessage('Failed to add user');
-    } finally {
-      setIsAddingUser(false);
-    }
-  };
 
   const handleProfileUpdate = (updatedUser: any) => {
     setCurrentUser(updatedUser);
@@ -312,6 +219,12 @@ const ChatPage: React.FC = () => {
     );
   }
 
+  const handleAddUser = async (user: UserModel) => {
+    // Add the new user to the state immediately for instant UI update
+    setUsers(prev => [...prev, user]);
+    setToastMessage('User added successfully');
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-blue-50 to-purple-50">
       {/* Header */}
@@ -321,12 +234,20 @@ const ChatPage: React.FC = () => {
             <span className="text-white text-lg">💬</span>
           </div>
           <div>
-            <h1 className="font-bold text-gray-900">Blockchain Chat</h1>
+            <h1 className="font-bold text-gray-900">De Chat</h1>
             <p className="text-sm text-gray-600 font-mono">{shortenAddress(currentUser.wallet_address)}</p>
           </div>
         </div>
 
         <div className="flex items-center space-x-2">
+          {/* Messaging Status Indicator */}
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+            <span className="text-xs text-gray-600">
+              Messaging Ready
+            </span>
+          </div>
+
           {/* Profile Button */}
           <button
             onClick={() => setShowProfileModal(true)}
@@ -347,61 +268,56 @@ const ChatPage: React.FC = () => {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-gray-900">Users</h2>
-              <button
-                onClick={() => setShowAddUserModal(true)}
-                className="px-2 py-1 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 transition-colors text-sm"
-                title="Add user by wallet address"
-              >
-                ➕ Add
-              </button>
-            </div>
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {users.map((user) => (
-                <div
-                  key={user.id}
-                  className={`relative group rounded-lg transition-colors ${
-                    selectedUser?.id === user.id
-                      ? 'bg-blue-100 border-blue-300'
-                      : 'hover:bg-gray-100'
-                  }`}
-                >
-                  <button
-                    onClick={() => selectUser(user)}
-                    className="w-full p-3 text-left"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm">👤</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">
-                          {user.username || shortenAddress(user.wallet_address)}
-                        </p>
-                        <p className="text-xs text-gray-600 font-mono break-all">
-                          {user.wallet_address}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteUser(user);
-                    }}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-red-100 text-red-500"
-                    title="Remove user"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <Sidebar
+          users={users.map(user => UserModel.fromJson({
+            id: user.id,
+            wallet_address: user.wallet_address,
+            username: user.username,
+            profile_cid: user.profile_cid,
+            is_active: user.is_active,
+            is_online: user.is_online,
+            created_at: user.created_at
+          }))}
+          selectedUser={selectedUser ? UserModel.fromJson({
+            id: selectedUser.id,
+            wallet_address: selectedUser.wallet_address,
+            username: selectedUser.username,
+            profile_cid: selectedUser.profile_cid,
+            is_active: selectedUser.is_active,
+            is_online: selectedUser.is_online,
+            created_at: selectedUser.created_at
+          }) : null}
+          currentUser={currentUser ? UserModel.fromJson({
+            id: currentUser.id,
+            wallet_address: currentUser.wallet_address,
+            username: currentUser.username,
+            profile_cid: currentUser.profile_cid,
+            is_active: currentUser.is_active,
+            created_at: currentUser.created_at
+          }) : null}
+          onSelectUser={(user) => selectUser({
+            id: user.id,
+            wallet_address: user.walletAddress,
+            username: user.username,
+            profile_cid: user.profileCid,
+            is_active: user.isActive,
+            is_online: user.isOnline,
+            created_at: user.createdAt.toISOString()
+          })}
+          onDeleteFriend={(user) => handleDeleteUser({
+            id: user.id,
+            wallet_address: user.walletAddress,
+            username: user.username
+          })}
+          onAddUser={handleAddUser}
+          onError={(message) => {
+            setToastMessage(message);
+            if (message.includes('Session expired')) {
+              router.push('/login');
+            }
+          }}
+          isMessagingReady={isMessagingReady}
+        />
 
         {/* Chat Area */}
         <div className="flex-1 flex flex-col">
@@ -428,7 +344,7 @@ const ChatPage: React.FC = () => {
               <div className="h-full flex items-center justify-center text-gray-500">
                 <div className="text-center">
                   <span className="text-6xl mb-4 block">💬</span>
-                  <h2 className="text-xl font-semibold mb-2">Welcome to Blockchain Chat!</h2>
+                  <h2 className="text-xl font-semibold mb-2">Welcome to De Chat!</h2>
                   <p>Select a user from the sidebar to start chatting</p>
                 </div>
               </div>
@@ -519,12 +435,13 @@ const ChatPage: React.FC = () => {
 
                 <button
                   onClick={sendMessage}
-                  disabled={!messageInput.trim() && !selectedFile}
+                  disabled={(!messageInput.trim() && !selectedFile) || !isMessagingReady}
                   className={`px-6 py-3 rounded-xl text-white transition-all duration-200 shadow-md ${
-                    (messageInput.trim() || selectedFile)
+                    (messageInput.trim() || selectedFile) && isMessagingReady
                       ? "bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 cursor-pointer hover:shadow-lg"
                       : "bg-gray-300 cursor-not-allowed"
                   }`}
+                  title="Send message"
                 >
                   🚀 Send
                 </button>
@@ -562,45 +479,6 @@ const ChatPage: React.FC = () => {
         />
       )}
 
-      {/* Add User Modal */}
-      {showAddUserModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4 text-black">Add User</h3>
-            <p className="text-gray-600 mb-4">
-              Enter the wallet address of the user you want to add to your contacts.
-            </p>
-            <input
-              type="text"
-              value={newUserWallet}
-              onChange={(e) => setNewUserWallet(e.target.value)}
-              placeholder="0x..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black mb-4"
-            />
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowAddUserModal(false);
-                  setNewUserWallet('');
-                }}
-                style={{cursor: 'pointer'}}
-                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-                disabled={isAddingUser}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddUser}
-                style={{cursor: 'pointer'}}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300"
-                disabled={isAddingUser || !newUserWallet.trim()}
-              >
-                {isAddingUser ? 'Adding...' : 'Add User'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -152,7 +152,7 @@ export class ApiService {
 
       if (response.ok) {
         const data = await response.json();
-        return data.users.map((user: any) => UserModel.fromJson(user));
+        return data.users.map((user: any) => UserModel.fromJson(user)).filter((u: UserModel) => u.walletAddress && u.walletAddress.trim());
       } else {
         console.error('Failed to fetch users:', await response.text());
         return [];
@@ -333,6 +333,10 @@ export class ApiService {
 
       if (response.ok) {
         return await response.json();
+      } else if (response.status === 401) {
+        console.error('Token invalid, clearing token');
+        localStorage.removeItem('access_token');
+        throw new Error('Session expired, please login again');
       } else {
         console.error('Failed to add user:', await response.text());
         return null;
@@ -360,6 +364,10 @@ export class ApiService {
 
       if (response.ok) {
         return await response.json();
+      } else if (response.status === 401) {
+        console.error('Token invalid, clearing token');
+        localStorage.removeItem('access_token');
+        throw new Error('Session expired, please login again');
       } else {
         console.error('Failed to delete user:', await response.text());
         return null;

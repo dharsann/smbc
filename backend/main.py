@@ -229,6 +229,23 @@ async def update_avatar(avatar_data: dict, current_user: User = Depends(get_curr
 
     return {"message": "Avatar updated successfully", "avatar_cid": avatar_cid}
 
+@app.get("/users/get_user/{wallet_address}")
+async def get_user_by_wallet(wallet_address: str, current_user: User = Depends(get_current_user)):
+    """Get user by wallet address"""
+    wallet_address = wallet_address.lower()
+
+    user_doc = await db.users.find_one({"wallet_address": wallet_address})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    return {
+        "id": str(user_doc["_id"]),
+        "wallet_address": user_doc["wallet_address"],
+        "username": user_doc.get("username"),
+        "profile_cid": user_doc.get("profile_cid"),
+        "created_at": user_doc["created_at"]
+    }
+
 # Simple Chat Endpoints
 @app.post("/chat/send")
 async def send_message(message_data: MessageCreate, current_user: User = Depends(get_current_user)):
@@ -324,10 +341,7 @@ async def add_user_by_wallet(request: dict, current_user: User = Depends(get_cur
     
     if not wallet_address:
         raise HTTPException(status_code=400, detail="Wallet address is required")
-    
-    if wallet_address == current_user.wallet_address:
-        raise HTTPException(status_code=400, detail="Cannot add yourself")
-    
+
     # Check if user already exists
     existing_user = await db.users.find_one({"wallet_address": wallet_address})
     
@@ -343,7 +357,7 @@ async def add_user_by_wallet(request: dict, current_user: User = Depends(get_cur
     # Create new user entry
     user_data = {
         "wallet_address": wallet_address,
-        "is_active": False,  # Not registered yet
+        "is_active": True,  # Allow chatting
         "created_at": datetime.utcnow()
     }
     

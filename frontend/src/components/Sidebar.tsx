@@ -6,13 +6,26 @@ import UserAvatar from './UserAvatar';
 interface SidebarProps {
   users: UserModel[];
   selectedUser: UserModel | null;
+  currentUser: UserModel | null;
   onSelectUser: (user: UserModel) => void;
   onDeleteFriend?: (user: UserModel) => void;
   onAddUser?: (user: UserModel) => void;
   onError?: (message: string) => void;
+  onSuccess?: (message: string) => void; // Add success callback
+  isMessagingReady?: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ users, selectedUser, onSelectUser, onDeleteFriend, onAddUser, onError }) => {
+const Sidebar: React.FC<SidebarProps> = ({
+  users,
+  selectedUser,
+  currentUser,
+  onSelectUser,
+  onDeleteFriend,
+  onAddUser,
+  onError,
+  onSuccess,
+  isMessagingReady = true
+}) => {
   const [searchWallet, setSearchWallet] = useState('');
   const [isAddingUser, setIsAddingUser] = useState(false);
 
@@ -21,21 +34,55 @@ const Sidebar: React.FC<SidebarProps> = ({ users, selectedUser, onSelectUser, on
   const handleAddUser = async () => {
     if (!searchWallet.trim() || isAddingUser) return;
 
-    if (!isValidWalletAddress(searchWallet.trim())) {
+    const walletAddress = searchWallet.trim();
+
+    if (!isValidWalletAddress(walletAddress)) {
       onError?.('Please enter a valid wallet address');
+      return;
+    }
+
+    if (currentUser && walletAddress.toLowerCase() === currentUser.walletAddress.toLowerCase()) {
+      onError?.('Cannot add yourself');
+      return;
+    }
+
+    // Check if user already exists in the current list
+    const userExists = users.some(user => 
+      user.walletAddress.toLowerCase() === walletAddress.toLowerCase()
+    );
+
+    if (userExists) {
+      onError?.('User is already in your contacts');
       return;
     }
 
     setIsAddingUser(true);
     try {
-      const userData = await ApiService.fetchUserByWallet(searchWallet.trim());
+      const userData = await ApiService.addUserByWallet(walletAddress);
+      
       if (userData) {
         const newUser = UserModel.fromJson(userData);
+        
+        // Call the parent's onAddUser callback
         onAddUser?.(newUser);
+        
+        // Clear the input
         setSearchWallet('');
+        
+        // Show success message
+        onSuccess?.('User added successfully!');
+        
+        console.log('User added successfully:', newUser); // Debug log
+      } else {
+        onError?.('Failed to add user. Please check the wallet address.');
       }
-    } catch (error) {
-      onError?.('Failed to add user. Please check the wallet address.');
+    } catch (error: any) {
+      console.error('Error adding user:', error); // Debug log
+      if (error.message && error.message.includes('Session expired')) {
+        onError?.(error.message);
+      } else {
+        onError?.('Failed to add user. Please check the wallet address.');
+      }
     } finally {
       setIsAddingUser(false);
     }
@@ -50,10 +97,20 @@ const Sidebar: React.FC<SidebarProps> = ({ users, selectedUser, onSelectUser, on
   return (
     <div className="w-72 bg-white border-r border-gray-200 flex flex-col shadow-sm">
       <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4">
-        <h2 className="text-lg font-semibold">👥 Contacts</h2>
-        <p className="text-sm opacity-90">
-          {users.filter(u => u.isOnline).length} online
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">👥 Contacts</h2>
+            <p className="text-sm opacity-90">
+              {users.filter(u => u.isOnline).length} online • {users.length} total
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 rounded-full bg-green-400"></div>
+            <span className="text-xs opacity-75">
+              Ready
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Add User Section */}
@@ -71,7 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({ users, selectedUser, onSelectUser, on
             onClick={handleAddUser}
             disabled={!searchWallet.trim() || isAddingUser}
             style={{cursor: 'pointer'}}
-            className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors min-w-[60px]"
           >
             {isAddingUser ? '...' : 'Add'}
           </button>
@@ -86,18 +143,24 @@ const Sidebar: React.FC<SidebarProps> = ({ users, selectedUser, onSelectUser, on
           <div className="p-6 text-center text-gray-500">
             <div className="text-4xl mb-2">👤</div>
             <p>No users found</p>
+            <p className="text-xs mt-1">Add a wallet address above to get started</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
             {users.map((user) => (
               <div
                 key={user.id}
-                className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                className={`p-4 transition-colors ${
                   selectedUser?.id === user.id
                     ? 'bg-blue-50 border-r-4 border-blue-500'
                     : ''
+                } ${
+                  isMessagingReady && user.walletAddress
+                    ? 'cursor-pointer hover:bg-gray-50'
+                    : 'cursor-not-allowed opacity-60'
                 }`}
-                onClick={() => onSelectUser(user)}
+                onClick={() => isMessagingReady && user.walletAddress && onSelectUser(user)}
+                title={!isMessagingReady ? 'Messaging not ready' : !user.walletAddress ? 'Invalid user' : undefined}
               >
                 <div className="flex items-center space-x-3">
                   <div className="relative">
@@ -116,7 +179,7 @@ const Sidebar: React.FC<SidebarProps> = ({ users, selectedUser, onSelectUser, on
                       {user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}
                     </p>
                   </div>
-                  {onDeleteFriend && (
+                  {onDeleteFriend && user.id !== currentUser?.id && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
