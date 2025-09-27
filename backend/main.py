@@ -22,7 +22,7 @@ load_dotenv()
 
 # Simple configuration
 SECRET_KEY = os.getenv("SECRET_KEY", "simple_secret_key_for_demo")
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017/blockchain_chat")
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://dharsann:dharsann@cluster0.fithx1o.mongodb.net/?retryWrites=true&w=majority")
 security = HTTPBearer()
 
 # Global variables (simple approach)

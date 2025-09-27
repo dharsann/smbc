@@ -26,12 +26,7 @@ export class XMTPService {
     console.log('XMTP: Initializing with signer', signer);
     this.signer = signer;
     try {
-      const { Client } = await import('@xmtp/xmtp-js');
-      this.client = await Client.create(signer, { 
-        env: 'production',
-        skipContactPublishing: true,
-        persistConversations: false
-      });
+      this.client = await Client.create(signer);
       console.log('XMTP: Client created successfully');
     } catch (error) {
       console.error('XMTP: Failed to create client', error);
@@ -49,7 +44,7 @@ export class XMTPService {
     try {
       // Check if conversation exists first
       const conversations = await this.client.conversations.list();
-      let conversation = conversations.find(conv => 
+      let conversation = conversations.find((conv: any) =>
         conv.peerAddress.toLowerCase() === peerAddress.toLowerCase()
       );
       
@@ -77,7 +72,7 @@ export class XMTPService {
     try {
       // First check if conversation exists
       const conversations = await this.client.conversations.list();
-      let conversation = conversations.find(conv => 
+      let conversation = conversations.find((conv: any) =>
         conv.peerAddress.toLowerCase() === peerAddress.toLowerCase()
       );
       
@@ -110,7 +105,7 @@ export class XMTPService {
         const conversations = await this.client.conversations.list();
         console.log('Total conversations:', conversations.length);
         
-        conversations.forEach((conv, index) => {
+        conversations.forEach((conv: any, index: number) => {
           console.log(`Conversation ${index + 1}:`, conv.peerAddress);
         });
       } catch (error) {
