@@ -8,7 +8,6 @@ A decentralized chat application built with Next.js, FastAPI, and XMTP protocol 
 - **Wallet Authentication**: Connect using MetaMask or other Web3 wallets
 - **Decentralized Messaging**: XMTP protocol for secure peer-to-peer communication
 - **User Management**: Add/remove contacts by wallet address
-- **Real-time Chat**: WebSocket support for instant messaging
 - **File Sharing**: IPFS integration for decentralized file storage
 - **Profile Management**: Customizable user profiles with avatars
 
@@ -33,7 +32,6 @@ A decentralized chat application built with Next.js, FastAPI, and XMTP protocol 
 - **Framework**: FastAPI with Python
 - **Database**: MongoDB for user and message storage
 - **Authentication**: JWT with Web3 signature verification
-- **Real-time**: WebSocket connections
 - **File Storage**: IPFS integration
 
 ## 📦 Installation
