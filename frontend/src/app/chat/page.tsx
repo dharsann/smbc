@@ -93,6 +93,11 @@ const ChatPage: React.FC = () => {
       return;
     }
 
+    console.log('=== Selecting User ===');
+    console.log('Current user:', currentUser.walletAddress);
+    console.log('Selected user:', user.wallet_address);
+    console.log('XMTP ready:', isMessagingReady);
+
     setSelectedUser(user);
     setIsLoadingMessages(true);
     setMessages([]);
@@ -102,8 +107,10 @@ const ChatPage: React.FC = () => {
       let messages = [];
       if (isMessagingReady) {
         try {
+          console.log('Fetching XMTP messages...');
           const xmtpService = XMTPService.getInstance();
           const xmtpMessages = await xmtpService.getMessages(user.wallet_address);
+          console.log('Retrieved', xmtpMessages.length, 'XMTP messages');
           messages = xmtpMessages.map(msg => ({
             id: msg.id,
             sender: msg.sender,
@@ -115,11 +122,13 @@ const ChatPage: React.FC = () => {
           }));
         } catch (error) {
           console.error('Error fetching XMTP messages:', error);
+          setToastMessage('Failed to load messages from XMTP');
         }
       }
       
       // Sort messages by timestamp
       messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      console.log('Final message count:', messages.length);
       setMessages(messages);
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -149,6 +158,12 @@ const ChatPage: React.FC = () => {
 
     if (!hasText && !hasFile) return;
 
+    console.log('=== Sending Message ===');
+    console.log('To:', selectedUser.wallet_address);
+    console.log('Text:', text);
+    console.log('Has file:', hasFile);
+    console.log('XMTP ready:', isMessagingReady);
+
     // Clear inputs
     setMessageInput('');
     setSelectedFile(null);
@@ -161,19 +176,23 @@ const ChatPage: React.FC = () => {
 
       // If there's a file, upload it to IPFS first
       if (hasFile) {
+        console.log('Uploading file to IPFS...');
         const cid = await IPFSService.uploadFile(selectedFile);
+        console.log('File uploaded, CID:', cid);
         content = hasText ? `${text} [File: ${selectedFile.name}] - IPFS: ${cid}` : `[File: ${selectedFile.name}] - IPFS: ${cid}`;
       }
 
       // Send message only via XMTP
       if (isMessagingReady) {
         try {
+          console.log('Sending via XMTP...');
           const xmtpService = XMTPService.getInstance();
           if (hasFile) {
             await xmtpService.sendFileMessage(selectedUser.wallet_address, selectedFile);
           } else {
             await xmtpService.sendMessage(selectedUser.wallet_address, content);
           }
+          console.log('Message sent successfully via XMTP');
           
           // Add to local messages immediately for better UX
           const newMessage = {
@@ -190,6 +209,7 @@ const ChatPage: React.FC = () => {
             } : null
           };
           setMessages(prev => [...prev, newMessage]);
+          setToastMessage('Message sent via XMTP!');
         } catch (error) {
           console.error('XMTP send failed:', error);
           setToastMessage('Failed to send message via XMTP');
@@ -308,6 +328,20 @@ const ChatPage: React.FC = () => {
               {isMessagingReady ? 'XMTP Ready' : 'Initializing XMTP...'}
             </span>
           </div>
+
+          {/* Debug Button (only in development) */}
+          {process.env.NODE_ENV === 'development' && (
+            <button
+              onClick={async () => {
+                const xmtpService = XMTPService.getInstance();
+                await xmtpService.debugXMTPStatus();
+              }}
+              className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+              title="Debug XMTP status"
+            >
+              🐛 Debug
+            </button>
+          )}
 
           {/* Profile Button */}
           <button

@@ -83,6 +83,7 @@ export class XMTPService {
       
       // If no existing conversation, create new one
       if (!conversation) {
+        console.log('XMTP: Creating new conversation with', peerAddress);
         conversation = await this.client.conversations.newConversation(peerAddress);
       }
       
@@ -94,6 +95,29 @@ export class XMTPService {
       console.error('XMTP: Error getting messages:', error);
       return [];
     }
+  }
+
+  async debugXMTPStatus(): Promise<void> {
+    console.log('=== XMTP Debug Info ===');
+    console.log('Client initialized:', !!this.client);
+    console.log('Signer available:', !!this.signer);
+    
+    if (this.client) {
+      try {
+        const address = await this.signer?.getAddress();
+        console.log('Wallet address:', address);
+        
+        const conversations = await this.client.conversations.list();
+        console.log('Total conversations:', conversations.length);
+        
+        conversations.forEach((conv, index) => {
+          console.log(`Conversation ${index + 1}:`, conv.peerAddress);
+        });
+      } catch (error) {
+        console.error('Error getting debug info:', error);
+      }
+    }
+    console.log('=====================');
   }
 
   private parseMessage(msg: DecodedMessage): ParsedMessage {
