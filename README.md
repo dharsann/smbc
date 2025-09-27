@@ -1,4 +1,4 @@
-# Simple Blockchain Chat (SMBC v2)
+# Simple Blockchain Chat (SMBC)
 
 A decentralized chat application built with Next.js, FastAPI, and XMTP protocol for secure blockchain-based messaging.
 
