@@ -4,7 +4,6 @@
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from contextlib import asynccontextmanager
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timedelta
 from bson import ObjectId
@@ -16,8 +15,7 @@ from jose import JWTError, jwt
 from dotenv import load_dotenv
 from database import connect_to_mongo, close_mongo_connection, get_database
 from ipfs_utils import upload_file_to_ipfs
-from models import AuthRequest, AuthVerify, AuthResponse, UserResponse, User, MessageCreate
-from websocket_manager import manager
+from models import AuthRequest, AuthVerify, AuthResponse, UserResponse, User
 
 # Load environment variables
 load_dotenv()
@@ -247,86 +245,6 @@ async def get_user_by_wallet(wallet_address: str, current_user: User = Depends(g
     }
 
 # Simple Chat Endpoints
-@app.post("/chat/send")
-async def send_message(message_data: MessageCreate, current_user: User = Depends(get_current_user)):
-    """Send a message to another user"""
-    recipient_wallet = message_data.recipient.lower()
-
-    # Find recipient (create if doesn't exist)
-    recipient_doc = await db.users.find_one({"wallet_address": recipient_wallet})
-    if not recipient_doc:
-        # Create recipient user if they don't exist
-        recipient_data = {
-            "wallet_address": recipient_wallet,
-            "is_active": False,  # Not registered yet
-            "created_at": datetime.utcnow()
-        }
-        result = await db.users.insert_one(recipient_data)
-        recipient_doc = await db.users.find_one({"_id": result.inserted_id})
-
-    # Store message in database
-    message_doc = {
-        "sender_id": current_user.id,
-        "recipient_id": recipient_doc["_id"],
-        "content": message_data.content,
-        "created_at": datetime.utcnow()
-    }
-    result = await db.messages.insert_one(message_doc)
-
-    # Send real-time notification via WebSocket
-    msg = {
-        "id": str(result.inserted_id),
-        "content": message_data.content,
-        "sender": current_user.wallet_address,
-        "receiver": recipient_wallet,
-        "timestamp": datetime.utcnow().isoformat(),
-        "isFile": False,
-        "fileData": None
-    }
-
-    await manager.send_personal_message({"type": "new_message", "message": msg}, str(recipient_doc["_id"]))
-
-    return msg
-
-@app.get("/chat/messages/{peer_wallet}")
-async def get_messages(peer_wallet: str, current_user: User = Depends(get_current_user)):
-    """Get chat messages with a specific user"""
-    peer_wallet = peer_wallet.lower()
-
-    # Find peer user
-    peer_doc = await db.users.find_one({"wallet_address": peer_wallet})
-    if not peer_doc:
-        # Create user if doesn't exist
-        peer_data = {
-            "wallet_address": peer_wallet,
-            "is_active": False,
-            "created_at": datetime.utcnow()
-        }
-        result = await db.users.insert_one(peer_data)
-        peer_doc = await db.users.find_one({"_id": result.inserted_id})
-
-    # Get messages between users
-    messages = []
-    cursor = db.messages.find({
-        "$or": [
-            {"sender_id": current_user.id, "recipient_id": peer_doc["_id"]},
-            {"sender_id": peer_doc["_id"], "recipient_id": current_user.id}
-        ]
-    }).sort("created_at", 1)
-
-    async for msg in cursor:
-        sender_doc = await db.users.find_one({"_id": msg["sender_id"]})
-        recipient_doc = await db.users.find_one({"_id": msg["recipient_id"]})
-        messages.append({
-            "id": str(msg["_id"]),
-            "sender": sender_doc["wallet_address"] if sender_doc else "unknown",
-            "receiver": recipient_doc["wallet_address"] if recipient_doc else peer_wallet,
-            "content": msg["content"],
-            "timestamp": msg["created_at"].isoformat() if isinstance(msg["created_at"], datetime) else msg["created_at"]
-        })
-
-    return {"messages": messages}
-
 @app.get("/chat/users")
 async def get_chat_users(current_user: User = Depends(get_current_user)):
     """Get all users for chat (simplified - just returns all users)"""
@@ -339,7 +257,7 @@ async def get_chat_users(current_user: User = Depends(get_current_user)):
             "wallet_address": user_doc["wallet_address"],
             "username": user_doc.get("username", ""),
             "profile_cid": user_doc.get("profile_cid", ""),
-            "is_online": False  # Simplified - not tracking online status
+            "is_active": user_doc.get("is_active", True)
         })
 
     return {"users": users}
@@ -423,30 +341,9 @@ async def upload_file_to_ipfs_endpoint(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
-# WebSocket for Real-time Chat
-@app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    """WebSocket connection for real-time messaging"""
-    await websocket.accept()
-    print(f"User {user_id} connected to WebSocket")
-
-    connection_id = await manager.connect(websocket, user_id)
-
-    try:
-        while True:
-            # Keep connection alive
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        print(f"User {user_id} disconnected")
-        await manager.disconnect(connection_id)
-    except Exception as e:
-        print(f"WebSocket error for user {user_id}: {e}")
-        await manager.disconnect(connection_id)
-
 # Start the server
 if __name__ == "__main__":
     import uvicorn
     print("Starting Simple Blockchain Chat Backend...")
     print("API will be available at: http://localhost:8001")
-    print("WebSocket available at: ws://localhost:8001/ws/{user_id}")
     uvicorn.run(app, host="0.0.0.0", port=8001)

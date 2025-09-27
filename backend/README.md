@@ -30,10 +30,10 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - POST `/auth/verify`
 - GET `/users/me`
 - PUT `/users/me`
-- GET `/users/search?q=...`
-- POST `/messages`
-- GET `/messages/{user_id}`
-- WS `/ws/{user_id}`
+- GET `/chat/users`
+- POST `/chat/users/add`
+- DELETE `/chat/users/{user_id}`
+- POST `/ipfs/upload`
 
 ## Env
 See `.env.example`.

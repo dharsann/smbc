@@ -29,8 +29,8 @@ export class XMTPService {
       const { Client } = await import('@xmtp/xmtp-js');
       this.client = await Client.create(signer, { 
         env: 'production',
-        skipContactPublishing: false,
-        persistConversations: true
+        skipContactPublishing: true,
+        persistConversations: false
       });
       console.log('XMTP: Client created successfully');
     } catch (error) {

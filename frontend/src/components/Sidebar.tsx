@@ -165,9 +165,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className="flex items-center space-x-3">
                   <div className="relative">
                     <UserAvatar src={user.avatarUrl || undefined} size={44} />
-                    <div className={`absolute -bottom-1 -right-1 w-4 h-4 border-2 border-white rounded-full ${
-                      user.isOnline ? 'bg-green-500' : 'bg-gray-400'
-                    }`}></div>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className={`font-medium truncate ${

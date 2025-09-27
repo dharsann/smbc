@@ -87,13 +87,6 @@ class Message(BaseModel):
     )
 
 
-class MessageCreate(BaseModel):
-    recipient: str
-    content: str
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
 class MessageResponse(BaseModel):
     id: str
     sender: Dict[str, Any]   # sender info dict

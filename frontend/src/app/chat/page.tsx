@@ -20,59 +20,17 @@ const ChatPage: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [profilePicture, setProfilePicture] = useState<string>('');
   const [isMessagingReady, setIsMessagingReady] = useState<boolean>(true); // Always ready since using backend
-  const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const wsInitialized = useRef<boolean>(false);
   const router = useRouter();
 
   useEffect(() => {
     loadUserProfile();
     loadUsers();
   }, []);
-
-  // Initialize WebSocket when currentUser is loaded
-  useEffect(() => {
-    if (currentUser && currentUser.id && !wsInitialized.current) {
-      wsInitialized.current = true;
-      const initWebSocket = async () => {
-        const { WebSocketService } = await import('@/services');
-        WebSocketService.connect(
-          currentUser.id,
-          (message: any) => {
-            console.log('Received real-time message:', message);
-            // Add message to current chat if it's from the selected user
-            setMessages(prev => {
-              // Check if message already exists to prevent duplicates
-              const exists = prev.some(m => m.id === message.id);
-              if (!exists) {
-                return [...prev, message];
-              }
-              return prev;
-            });
-          },
-          (error: string) => {
-            console.error('WebSocket error:', error);
-            setWsConnected(false);
-          }
-        );
-        setWsConnected(true);
-      };
-      
-      initWebSocket();
-    }
-    
-    // Cleanup WebSocket on unmount
-    return () => {
-      if (wsInitialized.current) {
-        const { WebSocketService } = require('@/services');
-        WebSocketService.disconnect();
-      }
-    };
-  }, [currentUser]);
 
   useEffect(() => {
     scrollToBottom();
@@ -140,37 +98,29 @@ const ChatPage: React.FC = () => {
     setMessages([]);
 
     try {
-      // Fetch messages from backend
-      const backendMessages = await ApiService.fetchMessages(currentUser.walletAddress, user.wallet_address);
-      
-      // Also fetch XMTP messages if available
-      let xmtpMessages = [];
+      // Fetch messages only from XMTP
+      let messages = [];
       if (isMessagingReady) {
         try {
           const xmtpService = XMTPService.getInstance();
-          xmtpMessages = await xmtpService.getMessages(user.wallet_address);
+          const xmtpMessages = await xmtpService.getMessages(user.wallet_address);
+          messages = xmtpMessages.map(msg => ({
+            id: msg.id,
+            sender: msg.sender,
+            receiver: user.wallet_address,
+            content: msg.content,
+            timestamp: msg.timestamp.toISOString(),
+            isFile: msg.isFile,
+            fileData: msg.fileData
+          }));
         } catch (error) {
           console.error('Error fetching XMTP messages:', error);
         }
       }
       
-      // Combine and sort messages by timestamp
-      const allMessages = [...backendMessages, ...xmtpMessages.map(msg => ({
-        id: msg.id,
-        sender: msg.sender,
-        receiver: user.wallet_address,
-        content: msg.content,
-        timestamp: msg.timestamp.toISOString(),
-        isFile: msg.isFile,
-        fileData: msg.fileData
-      }))];
-      
-      // Sort by timestamp and remove duplicates
-      const uniqueMessages = allMessages.filter((msg, index, self) => 
-        index === self.findIndex(m => m.id === msg.id)
-      ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      
-      setMessages(uniqueMessages);
+      // Sort messages by timestamp
+      messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      setMessages(messages);
     } catch (error) {
       console.error('Error fetching messages:', error);
       setToastMessage('Error loading messages');
@@ -215,44 +165,38 @@ const ChatPage: React.FC = () => {
         content = hasText ? `${text} [File: ${selectedFile.name}] - IPFS: ${cid}` : `[File: ${selectedFile.name}] - IPFS: ${cid}`;
       }
 
-      // Send message via both backend and XMTP for redundancy
-      const messagePromises = [];
-      
-      // Send via backend
-      messagePromises.push(ApiService.sendMessage(selectedUser.wallet_address, content));
-      
-      // Send via XMTP if available
+      // Send message only via XMTP
       if (isMessagingReady) {
         try {
           const xmtpService = XMTPService.getInstance();
           if (hasFile) {
-            messagePromises.push(xmtpService.sendFileMessage(selectedUser.wallet_address, selectedFile));
+            await xmtpService.sendFileMessage(selectedUser.wallet_address, selectedFile);
           } else {
-            messagePromises.push(xmtpService.sendMessage(selectedUser.wallet_address, content));
+            await xmtpService.sendMessage(selectedUser.wallet_address, content);
           }
+          
+          // Add to local messages immediately for better UX
+          const newMessage = {
+            id: Date.now().toString(),
+            sender: currentUser.walletAddress,
+            receiver: selectedUser.wallet_address,
+            content: content,
+            timestamp: new Date().toISOString(),
+            isFile: hasFile,
+            fileData: hasFile ? {
+              fileName: selectedFile.name,
+              fileSize: selectedFile.size,
+              fileType: selectedFile.type
+            } : null
+          };
+          setMessages(prev => [...prev, newMessage]);
         } catch (error) {
           console.error('XMTP send failed:', error);
+          setToastMessage('Failed to send message via XMTP');
         }
+      } else {
+        setToastMessage('XMTP not ready. Please wait...');
       }
-      
-      // Wait for at least one to succeed
-      await Promise.allSettled(messagePromises);
-
-      // Add to local messages immediately
-      const newMessage = {
-        id: Date.now().toString(),
-        sender: currentUser.walletAddress,
-        receiver: selectedUser.wallet_address,
-        content: content,
-        timestamp: new Date().toISOString(),
-        isFile: hasFile,
-        fileData: hasFile ? {
-          fileName: selectedFile.name,
-          fileSize: selectedFile.size,
-          fileType: selectedFile.type
-        } : null
-      };
-      setMessages(prev => [...prev, newMessage]);
 
     } catch (error) {
       console.error('Error sending message:', error);
@@ -359,9 +303,9 @@ const ChatPage: React.FC = () => {
         <div className="flex items-center space-x-2">
           {/* Messaging Status Indicator */}
           <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${wsConnected && isMessagingReady ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+            <div className={`w-3 h-3 rounded-full ${isMessagingReady ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
             <span className="text-xs text-gray-600">
-              {wsConnected && isMessagingReady ? 'Ready' : 'Connecting...'}
+              {isMessagingReady ? 'XMTP Ready' : 'Initializing XMTP...'}
             </span>
           </div>
 
